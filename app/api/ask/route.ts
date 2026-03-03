@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 interface CodeChunk {
   content: string;
@@ -67,33 +69,74 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const client = new Anthropic({ apiKey });
-
-    const stream = await client.messages.stream({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: buildUserPrompt(query, chunks),
-        },
-      ],
+    // Use fetch directly to avoid SDK bundling issues on Vercel
+    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        stream: true,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: buildUserPrompt(query, chunks),
+          },
+        ],
+      }),
     });
 
-    // Return a streaming response
+    if (!anthropicRes.ok) {
+      const errBody = await anthropicRes.text();
+      console.error("Anthropic API error:", anthropicRes.status, errBody);
+      return new Response(
+        JSON.stringify({ error: "LLM request failed", details: errBody }),
+        { status: 502, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Proxy the SSE stream, extracting text deltas
     const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const reader = anthropicRes.body!.getReader();
+
     const readableStream = new ReadableStream({
       async start(controller) {
+        let buffer = "";
         try {
-          for await (const event of stream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`)
-              );
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const data = line.slice(6).trim();
+              if (data === "[DONE]" || !data) continue;
+
+              try {
+                const event = JSON.parse(data);
+                if (
+                  event.type === "content_block_delta" &&
+                  event.delta?.type === "text_delta"
+                ) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ text: event.delta.text })}\n\n`
+                    )
+                  );
+                }
+              } catch {
+                // skip non-JSON lines
+              }
             }
           }
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
