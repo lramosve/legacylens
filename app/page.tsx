@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import SearchBar from "./components/SearchBar";
 import Answer from "./components/Answer";
 import ResultsList from "./components/ResultsList";
+import ResultSkeleton from "./components/ResultSkeleton";
+import ThemeToggle from "./components/ThemeToggle";
+import FileTree from "./components/FileTree";
+import RelatedQuestions from "./components/RelatedQuestions";
+import { useSearchHistory } from "./hooks/useSearchHistory";
 import type { AnalysisMode, ModelSpeed } from "@/lib/types";
 
 interface SearchResult {
@@ -35,6 +40,8 @@ interface ModeSnapshot {
   latency: Latency | null;
   queryLogId: number | null;
   usedModelSpeed: ModelSpeed;
+  tokenUsage: { input: number; output: number } | null;
+  relatedQuestions: string[];
 }
 
 function getSessionId(): string {
@@ -59,8 +66,58 @@ export default function Home() {
   const [modelSpeed, setModelSpeed] = useState<ModelSpeed>("quality");
   const [inputQuery, setInputQuery] = useState("");
   const [usedModelSpeed, setUsedModelSpeed] = useState<ModelSpeed>("quality");
+  const [tokenUsage, setTokenUsage] = useState<{ input: number; output: number } | null>(null);
+  const [relatedQuestions, setRelatedQuestions] = useState<string[]>([]);
+  const [loadingRelated, setLoadingRelated] = useState(false);
   const sessionId = useRef(getSessionId());
   const modeHistory = useRef<Partial<Record<AnalysisMode, ModeSnapshot>>>({});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const { history, addQuery, clearHistory } = useSearchHistory();
+
+  // Keyboard shortcuts: / to focus search, Ctrl+K / Cmd+K
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        // Ctrl+K / Cmd+K works even when focused in input
+        if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+        }
+        return;
+      }
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Fetch related questions after answer completes
+  const fetchRelatedQuestions = useCallback(async (query: string, answerText: string) => {
+    setLoadingRelated(true);
+    try {
+      const res = await fetch("/api/related", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, answer_summary: answerText.slice(0, 500) }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRelatedQuestions(data.questions || []);
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setLoadingRelated(false);
+    }
+  }, []);
 
   const handleSearch = useCallback(async (query: string) => {
     setStatus("searching");
@@ -71,6 +128,10 @@ export default function Home() {
     setQueryLogId(null);
     setCurrentQuery(query);
     setUsedModelSpeed(modelSpeed);
+    setTokenUsage(null);
+    setRelatedQuestions([]);
+    setLoadingRelated(false);
+    addQuery(query);
 
     try {
       // Step 1: Search for relevant code chunks
@@ -103,6 +164,7 @@ export default function Home() {
         modeHistory.current[mode] = {
           query, answer: noResultAnswer, results: [], status: "done",
           error: "", latency: currentLatency, queryLogId: null, usedModelSpeed: modelSpeed,
+          tokenUsage: null, relatedQuestions: [],
         };
         return;
       }
@@ -134,6 +196,7 @@ export default function Home() {
       const decoder = new TextDecoder();
       let fullAnswer = "";
       let localQueryLogId: number | null = null;
+      let localTokenUsage: { input: number; output: number } | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -162,6 +225,10 @@ export default function Home() {
                 fullAnswer += parsed.text;
                 setAnswer(fullAnswer);
               }
+              if (parsed.tokens) {
+                localTokenUsage = parsed.tokens;
+                setTokenUsage(parsed.tokens);
+              }
             } catch {
               // Skip malformed JSON
             }
@@ -173,13 +240,17 @@ export default function Home() {
       modeHistory.current[mode] = {
         query, answer: fullAnswer, results: searchResults, status: "done",
         error: "", latency: currentLatency, queryLogId: localQueryLogId, usedModelSpeed: modelSpeed,
+        tokenUsage: localTokenUsage, relatedQuestions: [],
       };
+
+      // Fire non-blocking related questions fetch
+      fetchRelatedQuestions(query, fullAnswer);
     } catch (err) {
       console.error("Search error:", err);
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
       setStatus("error");
     }
-  }, [mode, modelSpeed]);
+  }, [mode, modelSpeed, addQuery, fetchRelatedQuestions]);
 
   const handleModeChange = useCallback((newMode: AnalysisMode) => {
     modeHistory.current[mode] = {
@@ -191,6 +262,8 @@ export default function Home() {
       latency,
       queryLogId,
       usedModelSpeed,
+      tokenUsage,
+      relatedQuestions,
     };
     const snapshot = modeHistory.current[newMode];
     if (snapshot) {
@@ -203,6 +276,8 @@ export default function Home() {
       setQueryLogId(snapshot.queryLogId);
       setCurrentQuery(snapshot.query);
       setUsedModelSpeed(snapshot.usedModelSpeed);
+      setTokenUsage(snapshot.tokenUsage ?? null);
+      setRelatedQuestions(snapshot.relatedQuestions ?? []);
     } else {
       setInputQuery("");
       setAnswer("");
@@ -213,15 +288,22 @@ export default function Home() {
       setQueryLogId(null);
       setCurrentQuery("");
       setUsedModelSpeed("quality");
+      setTokenUsage(null);
+      setRelatedQuestions([]);
     }
     setMode(newMode);
-  }, [mode, inputQuery, answer, results, status, error, latency, queryLogId, usedModelSpeed]);
+  }, [mode, inputQuery, answer, results, status, error, latency, queryLogId, usedModelSpeed, tokenUsage, relatedQuestions]);
+
+  const handleRelatedSelect = useCallback((question: string) => {
+    setInputQuery(question);
+    handleSearch(question);
+  }, [handleSearch]);
 
   return (
     <main className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-[var(--card-border)] bg-[var(--card)]">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b border-[var(--card-border)] bg-[var(--card)] no-print">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">
               LegacyLens
@@ -230,30 +312,45 @@ export default function Home() {
               GnuCOBOL 3.2 Codebase Explorer
             </p>
           </div>
-          <a
-            href="https://gnucobol.sourceforge.io/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-          >
-            GnuCOBOL Project
-          </a>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <a
+              href="https://gnucobol.sourceforge.io/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors hidden sm:inline"
+            >
+              GnuCOBOL Project
+            </a>
+          </div>
         </div>
       </header>
 
       {/* Main content */}
-      <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-8">
+      <div className="flex-1 max-w-5xl mx-auto w-full px-3 sm:px-4 py-8">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold mb-3">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-3">
             Explore the GnuCOBOL Compiler
           </h2>
-          <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">
+          <p className="text-[var(--muted)] text-base sm:text-lg max-w-xl mx-auto">
             Ask natural language questions about the GnuCOBOL v3.2 codebase.
             Powered by semantic search and AI.
           </p>
         </div>
 
-        <SearchBar onSearch={handleSearch} isLoading={status === "searching" || status === "generating"} mode={mode} onModeChange={handleModeChange} modelSpeed={modelSpeed} onModelSpeedChange={setModelSpeed} query={inputQuery} onQueryChange={setInputQuery} />
+        <SearchBar
+          ref={searchInputRef}
+          onSearch={handleSearch}
+          isLoading={status === "searching" || status === "generating"}
+          mode={mode}
+          onModeChange={handleModeChange}
+          modelSpeed={modelSpeed}
+          onModelSpeedChange={setModelSpeed}
+          query={inputQuery}
+          onQueryChange={setInputQuery}
+          searchHistory={history}
+          onClearHistory={clearHistory}
+        />
 
         <Answer
           text={answer}
@@ -266,14 +363,33 @@ export default function Home() {
           sessionId={sessionId.current}
           mode={mode}
           modelSpeed={usedModelSpeed}
+          tokenUsage={tokenUsage}
+          animationKey={`${mode}-${currentQuery}`}
         />
 
-        <ResultsList results={results} />
+        {/* Related questions */}
+        {status === "done" && answer && (
+          <div className="w-full max-w-3xl mx-auto">
+            <RelatedQuestions
+              questions={relatedQuestions}
+              onSelect={handleRelatedSelect}
+              isLoading={loadingRelated}
+            />
+          </div>
+        )}
+
+        {/* File tree */}
+        {results.length > 0 && <FileTree results={results} />}
+
+        {/* Results skeleton while searching */}
+        {status === "searching" && <ResultSkeleton />}
+
+        <ResultsList results={results} animationKey={`${mode}-${currentQuery}`} />
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-[var(--card-border)] py-4">
-        <div className="max-w-5xl mx-auto px-4 text-center text-sm text-[var(--muted)]">
+      <footer className="border-t border-[var(--card-border)] py-4 no-print">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 text-center text-sm text-[var(--muted)]">
           Built with Next.js, Supabase pgvector, Voyage Code 3, and Claude
         </div>
       </footer>

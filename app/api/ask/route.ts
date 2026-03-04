@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { buildLLMChain, formatChunksAsContext } from "@/lib/langchain";
+import { buildRawLLMChain, formatChunksAsContext } from "@/lib/langchain";
 import { createServerClient } from "@/lib/supabase";
 import type { AnalysisMode, ModelSpeed } from "@/lib/types";
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const chunkLimit = modelSpeed === "fast" ? 5 : 10;
     const context = formatChunksAsContext((chunks as CodeChunk[]).slice(0, chunkLimit));
-    const chain = buildLLMChain(analysisMode, modelSpeed);
+    const chain = buildRawLLMChain(analysisMode, modelSpeed);
 
     // Insert query_log to get log_id before streaming
     const supabase = createServerClient();
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
     });
 
     let fullAnswer = "";
+    let tokenUsage: { input: number; output: number } | null = null;
 
     const readableStream = new ReadableStream({
       async start(controller) {
@@ -81,10 +82,47 @@ export async function POST(req: NextRequest) {
           }
 
           for await (const chunk of stream) {
-            fullAnswer += chunk;
+            // Extract text content from AIMessageChunk
+            const content = chunk.content;
+            let textPart = "";
+            if (typeof content === "string") {
+              textPart = content;
+            } else if (Array.isArray(content)) {
+              for (const part of content) {
+                if (typeof part === "string") {
+                  textPart += part;
+                } else if (part && typeof part === "object" && "text" in part) {
+                  textPart += (part as { text: string }).text;
+                }
+              }
+            }
+
+            if (textPart) {
+              fullAnswer += textPart;
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ text: textPart })}\n\n`
+                )
+              );
+            }
+
+            // Check for usage metadata on chunks
+            const usage = (chunk as unknown as Record<string, unknown>).usage_metadata as
+              | { input_tokens?: number; output_tokens?: number }
+              | undefined;
+            if (usage && (usage.input_tokens || usage.output_tokens)) {
+              tokenUsage = {
+                input: usage.input_tokens ?? 0,
+                output: usage.output_tokens ?? 0,
+              };
+            }
+          }
+
+          // Send token usage before DONE if available
+          if (tokenUsage) {
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ text: chunk })}\n\n`
+                `data: ${JSON.stringify({ tokens: tokenUsage })}\n\n`
               )
             );
           }

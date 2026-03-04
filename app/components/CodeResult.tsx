@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import CopyButton from "./CopyButton";
 
 interface CodeResultProps {
   content: string;
@@ -42,6 +43,20 @@ export default function CodeResult({
   score,
 }: CodeResultProps) {
   const [expanded, setExpanded] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    const current = document.documentElement.getAttribute("data-theme");
+    if (current === "light") setTheme("light");
+
+    const observer = new MutationObserver(() => {
+      const t = document.documentElement.getAttribute("data-theme");
+      setTheme(t === "light" ? "light" : "dark");
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
   const lines = content.split("\n");
   const isLong = lines.length > 25;
   const displayContent =
@@ -51,10 +66,13 @@ export default function CodeResult({
   const langColor = LANGUAGE_COLORS[language] || "bg-gray-800 text-gray-300";
   const relevance = Math.round(score * 1000) / 10;
 
+  const confidenceColor =
+    relevance > 70 ? "bg-green-500" : relevance > 40 ? "bg-yellow-500" : "bg-red-500";
+
   return (
     <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--card-border)] bg-[#0d0d0d]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 border-b border-[var(--card-border)] bg-[var(--code-bg)]">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-mono text-sm text-[var(--foreground)] truncate">
             {filePath}
@@ -63,31 +81,53 @@ export default function CodeResult({
             </span>
           </span>
           {functionName && (
-            <span className="text-xs text-[var(--muted)] truncate">
+            <span className="text-xs text-[var(--muted)] truncate hidden sm:inline">
               {functionName}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 mt-1 sm:mt-0">
           <span className={`px-2 py-0.5 rounded text-xs font-medium ${langColor}`}>
             {language}
           </span>
           <span className="px-2 py-0.5 rounded text-xs bg-[var(--card-border)] text-[var(--muted)]">
             {chunkType}
           </span>
-          <span className="text-xs text-[var(--success)] font-medium">
-            {relevance}%
-          </span>
+          {/* Confidence bar */}
+          <div className="flex items-center gap-1.5">
+            <div className="w-16 h-1.5 bg-[var(--card-border)] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${confidenceColor}`}
+                style={{ width: `${Math.min(relevance, 100)}%` }}
+              />
+            </div>
+            <span className="text-xs text-[var(--success)] font-medium">
+              {relevance}%
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Code */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto relative group">
+        <CopyButton text={content} className="absolute top-2 right-2 z-10" />
         <SyntaxHighlighter
           language={syntaxLang}
-          style={oneDark}
+          style={theme === "light" ? oneLight : oneDark}
           showLineNumbers
           startingLineNumber={lineStart}
+          wrapLines
+          lineProps={(lineNumber: number) => {
+            const relLine = lineNumber - lineStart;
+            if (relLine < 5) {
+              return {
+                style: {
+                  backgroundColor: theme === "light" ? "rgba(59,130,246,0.06)" : "rgba(59,130,246,0.08)",
+                },
+              };
+            }
+            return {};
+          }}
           customStyle={{
             margin: 0,
             borderRadius: 0,

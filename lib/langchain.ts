@@ -103,6 +103,8 @@ const BASE_CONTEXT = `GnuCOBOL architecture overview:
 - **copy/**: COBOL copybooks (reusable code fragments)
 - **tests/**: Test suite`;
 
+const CITATION_INSTRUCTION = `\nWhen referencing code from the provided context, cite it using [Source N] notation matching the source numbers.`;
+
 const ANALYSIS_PROMPTS: Record<AnalysisMode, { system: string; humanTemplate: string }> = {
   explain: {
     system: `You are LegacyLens, an expert assistant for understanding the GnuCOBOL compiler codebase (v3.2). You help developers navigate and understand this large C-based COBOL compiler.
@@ -114,7 +116,7 @@ When answering questions:
 4. If the code context doesn't contain enough information to fully answer, say so
 5. Format code references as \`file_path:line_number\` or \`file_path:line_start-line_end\`
 
-${BASE_CONTEXT}`,
+${BASE_CONTEXT}${CITATION_INSTRUCTION}`,
     humanTemplate: `Question: {question}
 
 Retrieved code context from the GnuCOBOL 3.2 codebase:
@@ -135,7 +137,7 @@ When generating documentation:
 5. If the context includes multiple related functions, document their relationships
 6. Format code references as \`file_path:line_number\` or \`file_path:line_start-line_end\`
 
-${BASE_CONTEXT}`,
+${BASE_CONTEXT}${CITATION_INSTRUCTION}`,
     humanTemplate: `Generate structured technical documentation for the following:
 
 Topic: {question}
@@ -158,7 +160,7 @@ When providing translation hints:
 5. Reference exact file paths and line numbers from the provided context
 6. Format code references as \`file_path:line_number\` or \`file_path:line_start-line_end\`
 
-${BASE_CONTEXT}`,
+${BASE_CONTEXT}${CITATION_INSTRUCTION}`,
     humanTemplate: `Provide translation hints for the following code/concept:
 
 Topic: {question}
@@ -181,7 +183,7 @@ When extracting business logic:
 5. Reference exact file paths and line numbers for each extracted rule
 6. Format code references as \`file_path:line_number\` or \`file_path:line_start-line_end\`
 
-${BASE_CONTEXT}`,
+${BASE_CONTEXT}${CITATION_INSTRUCTION}`,
     humanTemplate: `Extract and categorize the business logic for:
 
 Topic: {question}
@@ -218,6 +220,31 @@ export function buildLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelS
   const outputParser = new StringOutputParser();
 
   return prompt.pipe(model).pipe(outputParser);
+}
+
+/**
+ * Build a raw LLM chain that returns AIMessageChunk stream (includes usage_metadata).
+ * Used by the /api/ask route to extract token usage from the final chunk.
+ */
+export function buildRawLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelSpeed = "quality") {
+  const { system, humanTemplate } = ANALYSIS_PROMPTS[mode];
+  const { model: modelName, maxTokens } = MODEL_MAP[modelSpeed];
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", system],
+    ["human", humanTemplate],
+  ]);
+
+  const model = new ChatAnthropic({
+    model: modelName,
+    maxTokens,
+    streaming: true,
+    streamUsage: true,
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
+  // Return without StringOutputParser so we get AIMessageChunk objects
+  return prompt.pipe(model);
 }
 
 export function formatChunksAsContext(

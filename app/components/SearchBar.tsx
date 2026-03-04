@@ -1,5 +1,6 @@
 "use client";
 
+import { forwardRef, useState, useRef, useEffect } from "react";
 import type { AnalysisMode, ModelSpeed } from "@/lib/types";
 
 const MODE_CONFIG: Record<
@@ -65,106 +66,195 @@ interface SearchBarProps {
   onModelSpeedChange: (speed: ModelSpeed) => void;
   query: string;
   onQueryChange: (query: string) => void;
+  searchHistory?: string[];
+  onClearHistory?: () => void;
 }
 
-export default function SearchBar({ onSearch, isLoading, mode, onModeChange, modelSpeed, onModelSpeedChange, query, onQueryChange }: SearchBarProps) {
+const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
+  function SearchBar(
+    { onSearch, isLoading, mode, onModeChange, modelSpeed, onModelSpeedChange, query, onQueryChange, searchHistory = [], onClearHistory },
+    ref
+  ) {
+    const [showHistory, setShowHistory] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const internalRef = useRef<HTMLInputElement>(null);
+    const inputRef = (ref as React.RefObject<HTMLInputElement>) || internalRef;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim() && !isLoading) {
-      onSearch(query.trim());
-    }
-  };
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (query.trim() && !isLoading) {
+        setShowHistory(false);
+        onSearch(query.trim());
+      }
+    };
 
-  const examples = MODE_CONFIG[mode].examples;
+    const filteredHistory = searchHistory.filter(
+      (h) => !query || h.toLowerCase().includes(query.toLowerCase())
+    );
 
-  return (
-    <div className="w-full max-w-3xl mx-auto">
-      {/* Mode selector pill bar */}
-      <div className="flex gap-2 mb-4 justify-center flex-wrap">
-        {(Object.keys(MODE_CONFIG) as AnalysisMode[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => onModeChange(m)}
-            disabled={isLoading}
-            title={MODE_CONFIG[m].description}
-            className={`px-4 py-1.5 text-sm rounded-full font-medium transition-colors ${
-              mode === m
-                ? "bg-[var(--accent)] text-white"
-                : "bg-[var(--card)] border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)]"
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-          >
-            {MODE_CONFIG[m].label}
-          </button>
-        ))}
-      </div>
+    useEffect(() => {
+      function handleClickOutside(e: MouseEvent) {
+        if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+          setShowHistory(false);
+        }
+      }
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-      {/* Speed toggle */}
-      <div className="flex items-center justify-center gap-3 mb-4">
-        <button
-          onClick={() => onModelSpeedChange("fast")}
-          disabled={isLoading}
-          className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md font-medium transition-colors ${
-            modelSpeed === "fast"
-              ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/40"
-              : "text-[var(--muted)] hover:text-[var(--foreground)]"
-          } disabled:opacity-40 disabled:cursor-not-allowed`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          Fast
-        </button>
-        <span className="text-[var(--muted)] text-xs">|</span>
-        <button
-          onClick={() => onModelSpeedChange("quality")}
-          disabled={isLoading}
-          className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md font-medium transition-colors ${
-            modelSpeed === "quality"
-              ? "bg-violet-600/20 text-violet-400 border border-violet-500/40"
-              : "text-[var(--muted)] hover:text-[var(--foreground)]"
-          } disabled:opacity-40 disabled:cursor-not-allowed`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          Quality
-        </button>
-        <span className="text-[var(--muted)] text-xs">
-          {modelSpeed === "fast" ? "(Haiku — faster, lighter)" : "(Sonnet — deeper analysis)"}
-        </span>
-      </div>
+    const examples = MODE_CONFIG[mode].examples;
 
-      <form onSubmit={handleSubmit} className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Ask about the GnuCOBOL codebase..."
-          className="w-full px-5 py-4 bg-[var(--card)] border border-[var(--card-border)] rounded-xl text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-colors text-lg"
-          disabled={isLoading}
-        />
-        <button
-          type="submit"
-          disabled={isLoading || !query.trim()}
-          className="absolute right-3 top-1/2 -translate-y-1/2 px-5 py-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors"
-        >
-          {isLoading ? "Searching..." : "Ask"}
-        </button>
-      </form>
-
-      {!isLoading && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {examples.map((example) => (
+    return (
+      <div className="w-full max-w-3xl mx-auto">
+        {/* Mode selector pill bar */}
+        <div className="flex gap-2 mb-4 justify-center overflow-x-auto pb-1">
+          {(Object.keys(MODE_CONFIG) as AnalysisMode[]).map((m) => (
             <button
-              key={example}
-              onClick={() => {
-                onQueryChange(example);
-                onSearch(example);
-              }}
-              className="px-3 py-1.5 text-sm bg-[var(--card)] border border-[var(--card-border)] rounded-lg text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors"
+              key={m}
+              onClick={() => onModeChange(m)}
+              disabled={isLoading}
+              title={MODE_CONFIG[m].description}
+              className={`px-4 py-1.5 text-sm rounded-full font-medium transition-colors whitespace-nowrap ${
+                mode === m
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--card)] border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)]"
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
             >
-              {example}
+              {MODE_CONFIG[m].label}
             </button>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
+
+        {/* Speed toggle */}
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <button
+            onClick={() => onModelSpeedChange("fast")}
+            disabled={isLoading}
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+              modelSpeed === "fast"
+                ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/40"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Fast
+          </button>
+          <span className="text-[var(--muted)] text-xs">|</span>
+          <button
+            onClick={() => onModelSpeedChange("quality")}
+            disabled={isLoading}
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+              modelSpeed === "quality"
+                ? "bg-violet-600/20 text-violet-400 border border-violet-500/40"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Quality
+          </button>
+          <span className="text-[var(--muted)] text-xs">
+            {modelSpeed === "fast" ? "(Haiku — faster, lighter)" : "(Sonnet — deeper analysis)"}
+          </span>
+        </div>
+
+        <div ref={wrapperRef} className="relative">
+          <form onSubmit={handleSubmit} className="relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => {
+                onQueryChange(e.target.value);
+                setShowHistory(true);
+              }}
+              onFocus={() => setShowHistory(true)}
+              placeholder="Ask about the GnuCOBOL codebase..."
+              className="w-full px-5 py-4 pr-28 bg-[var(--card)] border border-[var(--card-border)] rounded-xl text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-colors text-base md:text-lg"
+              disabled={isLoading}
+            />
+            {/* Keyboard shortcut hint */}
+            {!query && !isLoading && (
+              <kbd className="absolute right-24 top-1/2 -translate-y-1/2 hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-[var(--card-border)] text-[var(--muted)] rounded border border-[var(--card-border)]">
+                /
+              </kbd>
+            )}
+            <button
+              type="submit"
+              disabled={isLoading || !query.trim()}
+              className="absolute right-3 top-1/2 -translate-y-1/2 px-3 md:px-5 py-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors"
+            >
+              {isLoading ? "Searching..." : "Ask"}
+            </button>
+          </form>
+
+          {/* Search history dropdown */}
+          {showHistory && filteredHistory.length > 0 && !isLoading && (
+            <div className="absolute top-full mt-1 left-0 right-0 bg-[var(--card)] border border-[var(--card-border)] rounded-xl shadow-lg z-30 max-h-60 overflow-y-auto">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--card-border)]">
+                <span className="text-xs text-[var(--muted)]">Recent searches</span>
+                {onClearHistory && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClearHistory();
+                      setShowHistory(false);
+                    }}
+                    className="text-xs text-[var(--muted)] hover:text-red-400 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {filteredHistory.slice(0, 8).map((h) => (
+                <button
+                  key={h}
+                  onClick={() => {
+                    onQueryChange(h);
+                    setShowHistory(false);
+                    onSearch(h);
+                  }}
+                  className="w-full px-3 py-2 text-sm text-left text-[var(--foreground)] hover:bg-[var(--card-border)] transition-colors truncate"
+                >
+                  {h}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {!isLoading && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {examples.slice(0, 4).map((example) => (
+              <button
+                key={example}
+                onClick={() => {
+                  onQueryChange(example);
+                  onSearch(example);
+                }}
+                className="px-3 py-1.5 text-sm bg-[var(--card)] border border-[var(--card-border)] rounded-lg text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors"
+              >
+                {example}
+              </button>
+            ))}
+            <span className="hidden sm:contents">
+              {examples.slice(4).map((example) => (
+                <button
+                  key={example}
+                  onClick={() => {
+                    onQueryChange(example);
+                    onSearch(example);
+                  }}
+                  className="px-3 py-1.5 text-sm bg-[var(--card)] border border-[var(--card-border)] rounded-lg text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors"
+                >
+                  {example}
+                </button>
+              ))}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+export default SearchBar;
