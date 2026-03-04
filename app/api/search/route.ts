@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase";
-import { embedQuery } from "@/lib/voyage";
+import { HybridSearchRetriever } from "@/lib/langchain";
+import { preprocessQuery } from "@/lib/cobol-preprocessor";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,27 +13,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const queryEmbedding = await embedQuery(query);
-    const supabase = createServerClient();
+    const { normalized, wasExpanded } = preprocessQuery(query);
+    const searchQuery = wasExpanded ? normalized : query;
 
-    const { data, error } = await supabase.rpc("hybrid_search_code_chunks", {
-      query_text: query,
-      query_embedding: JSON.stringify(queryEmbedding),
-      match_count: 15,
-      full_text_weight: 1,
-      semantic_weight: 1,
-      rrf_k: 50,
+    const retriever = new HybridSearchRetriever();
+    await retriever.invoke(searchQuery);
+
+    // Normalize RRF scores to 0-100 relative to top result
+    const raw = retriever.lastRawResults;
+    const maxScore = raw.length > 0 ? raw[0].score : 1;
+    const results = raw.map((r) => ({
+      ...r,
+      score: maxScore > 0 ? r.score / maxScore : 0,
+    }));
+
+    return NextResponse.json({
+      results,
+      query_normalized: wasExpanded ? normalized : undefined,
+      latency: {
+        embedding_ms: retriever.lastEmbeddingMs,
+        search_ms: retriever.lastSearchMs,
+      },
     });
-
-    if (error) {
-      console.error("Search error:", error);
-      return NextResponse.json(
-        { error: "Search failed", details: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ results: data || [] });
   } catch (err) {
     console.error("Search route error:", err);
     return NextResponse.json(

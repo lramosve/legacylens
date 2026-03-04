@@ -46,3 +46,5 @@ next-env.d.ts
 /tmp/
 gnucobol-3.2/
 gnucobol-3.2.tar.xz
+
+.vercel
