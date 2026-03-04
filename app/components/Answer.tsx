@@ -136,11 +136,11 @@ export default function Answer({
               {latency && (
                 <div className="flex items-center gap-3 text-xs text-[var(--muted)] mb-3">
                   <span>
-                    Search: {((latency.embedding_ms + latency.search_ms) / 1000).toFixed(2)}s
+                    <strong>Search:</strong> {((latency.embedding_ms + latency.search_ms) / 1000).toFixed(2)}s
                   </span>
                   <span className="text-[var(--card-border)]">|</span>
                   <span>
-                    Generation: {latency.llm_ms != null ? `${(latency.llm_ms / 1000).toFixed(2)}s` : "..."}
+                    <strong>Generation:</strong> {latency.llm_ms != null ? `${(latency.llm_ms / 1000).toFixed(2)}s` : "..."}
                   </span>
                   <span className="text-[var(--card-border)]">|</span>
                   <span className={modelSpeed === "fast" ? "text-emerald-400" : "text-violet-400"}>

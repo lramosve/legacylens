@@ -34,6 +34,7 @@ interface ModeSnapshot {
   error: string;
   latency: Latency | null;
   queryLogId: number | null;
+  usedModelSpeed: ModelSpeed;
 }
 
 function getSessionId(): string {
@@ -57,6 +58,7 @@ export default function Home() {
   const [mode, setMode] = useState<AnalysisMode>("explain");
   const [modelSpeed, setModelSpeed] = useState<ModelSpeed>("quality");
   const [inputQuery, setInputQuery] = useState("");
+  const [usedModelSpeed, setUsedModelSpeed] = useState<ModelSpeed>("quality");
   const sessionId = useRef(getSessionId());
   const modeHistory = useRef<Partial<Record<AnalysisMode, ModeSnapshot>>>({});
 
@@ -68,6 +70,7 @@ export default function Home() {
     setLatency(null);
     setQueryLogId(null);
     setCurrentQuery(query);
+    setUsedModelSpeed(modelSpeed);
 
     try {
       // Step 1: Search for relevant code chunks
@@ -99,7 +102,7 @@ export default function Home() {
         setStatus("done");
         modeHistory.current[mode] = {
           query, answer: noResultAnswer, results: [], status: "done",
-          error: "", latency: currentLatency, queryLogId: null,
+          error: "", latency: currentLatency, queryLogId: null, usedModelSpeed: modelSpeed,
         };
         return;
       }
@@ -169,7 +172,7 @@ export default function Home() {
       setStatus("done");
       modeHistory.current[mode] = {
         query, answer: fullAnswer, results: searchResults, status: "done",
-        error: "", latency: currentLatency, queryLogId: localQueryLogId,
+        error: "", latency: currentLatency, queryLogId: localQueryLogId, usedModelSpeed: modelSpeed,
       };
     } catch (err) {
       console.error("Search error:", err);
@@ -187,6 +190,7 @@ export default function Home() {
       error,
       latency,
       queryLogId,
+      usedModelSpeed,
     };
     const snapshot = modeHistory.current[newMode];
     if (snapshot) {
@@ -198,6 +202,7 @@ export default function Home() {
       setLatency(snapshot.latency);
       setQueryLogId(snapshot.queryLogId);
       setCurrentQuery(snapshot.query);
+      setUsedModelSpeed(snapshot.usedModelSpeed);
     } else {
       setInputQuery("");
       setAnswer("");
@@ -207,9 +212,10 @@ export default function Home() {
       setLatency(null);
       setQueryLogId(null);
       setCurrentQuery("");
+      setUsedModelSpeed("quality");
     }
     setMode(newMode);
-  }, [mode, inputQuery, answer, results, status, error, latency, queryLogId]);
+  }, [mode, inputQuery, answer, results, status, error, latency, queryLogId, usedModelSpeed]);
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -262,7 +268,7 @@ export default function Home() {
           currentQuery={currentQuery}
           sessionId={sessionId.current}
           mode={mode}
-          modelSpeed={modelSpeed}
+          modelSpeed={usedModelSpeed}
         />
 
         <ResultsList results={results} />
