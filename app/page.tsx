@@ -243,18 +243,15 @@ export default function Home() {
 
       {/* Main content */}
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-8">
-        {/* Hero (only when idle) */}
-        {status === "idle" && (
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold mb-3">
-              Explore the GnuCOBOL Compiler
-            </h2>
-            <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">
-              Ask natural language questions about the GnuCOBOL v3.2 codebase.
-              Powered by semantic search and AI.
-            </p>
-          </div>
-        )}
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-bold mb-3">
+            Explore the GnuCOBOL Compiler
+          </h2>
+          <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">
+            Ask natural language questions about the GnuCOBOL v3.2 codebase.
+            Powered by semantic search and AI.
+          </p>
+        </div>
 
         <SearchBar onSearch={handleSearch} isLoading={status === "searching" || status === "generating"} mode={mode} onModeChange={handleModeChange} modelSpeed={modelSpeed} onModelSpeedChange={setModelSpeed} query={inputQuery} onQueryChange={setInputQuery} />
 
