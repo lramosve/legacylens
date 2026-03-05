@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import FeedbackWidget from "./FeedbackWidget";
 import CopyButton from "./CopyButton";
 import ExportButton from "./ExportButton";
 import AnswerSkeleton from "./AnswerSkeleton";
+import { useTheme } from "../hooks/useTheme";
 import type { AnalysisMode } from "@/lib/types";
+
+const SyntaxHighlighter = dynamic(
+  () => import("react-syntax-highlighter").then((mod) => mod.Prism),
+  { ssr: false, loading: () => <div className="p-4 bg-[var(--code-bg)] rounded-lg animate-pulse h-20" /> }
+);
 
 const MODE_LABELS: Record<AnalysisMode, string> = {
   explain: "Code Explanation",
@@ -60,19 +65,7 @@ export default function Answer({
   tokenUsage,
   animationKey,
 }: AnswerProps) {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme");
-    if (current === "light") setTheme("light");
-
-    const observer = new MutationObserver(() => {
-      const t = document.documentElement.getAttribute("data-theme");
-      setTheme(t === "light" ? "light" : "dark");
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => observer.disconnect();
-  }, []);
+  const theme = useTheme();
 
   if (status === "idle") return null;
 

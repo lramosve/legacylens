@@ -68,9 +68,9 @@ export async function POST(req: NextRequest) {
     const context = formatChunksAsContext((chunks as CodeChunk[]).slice(0, chunkLimit));
     const chain = buildRawLLMChain(analysisMode, modelSpeed);
 
-    // Insert query_log to get log_id before streaming
+    // Start LLM stream and query_log insert in parallel (non-blocking)
     const supabase = createServerClient();
-    const { data: logRow } = await supabase
+    const logPromise = supabase
       .from("query_logs")
       .insert({
         query_raw: query,
@@ -86,8 +86,6 @@ export async function POST(req: NextRequest) {
       .select("id")
       .single();
 
-    const logId = logRow?.id ?? null;
-
     const encoder = new TextEncoder();
     const llmStart = Date.now();
 
@@ -98,18 +96,22 @@ export async function POST(req: NextRequest) {
 
     let fullAnswer = "";
     let tokenUsage: { input: number; output: number } | null = null;
+    let logId: number | null = null;
 
     const readableStream = new ReadableStream({
       async start(controller) {
         try {
-          // Send log_id first so frontend can link feedback
-          if (logId) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ log_id: logId })}\n\n`
-              )
-            );
-          }
+          // Send log_id as soon as the DB insert resolves (non-blocking)
+          Promise.resolve(logPromise).then(({ data: logRow }) => {
+            logId = logRow?.id ?? null;
+            if (logId) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ log_id: logId })}\n\n`
+                )
+              );
+            }
+          }).catch(() => { /* non-critical */ });
 
           for await (const chunk of stream) {
             // Extract text content from AIMessageChunk

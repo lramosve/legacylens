@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import CopyButton from "./CopyButton";
+import { useTheme } from "../hooks/useTheme";
+
+const SyntaxHighlighter = dynamic(
+  () => import("react-syntax-highlighter").then((mod) => mod.Prism),
+  { ssr: false, loading: () => <div className="p-4 bg-[var(--code-bg)] rounded-lg animate-pulse h-20" /> }
+);
 
 interface CodeResultProps {
   content: string;
@@ -43,19 +49,7 @@ export default function CodeResult({
   score,
 }: CodeResultProps) {
   const [expanded, setExpanded] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme");
-    if (current === "light") setTheme("light");
-
-    const observer = new MutationObserver(() => {
-      const t = document.documentElement.getAttribute("data-theme");
-      setTheme(t === "light" ? "light" : "dark");
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => observer.disconnect();
-  }, []);
+  const theme = useTheme();
 
   const lines = content.split("\n");
   const isLong = lines.length > 25;

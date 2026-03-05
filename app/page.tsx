@@ -178,7 +178,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query,
-          chunks: searchResults.slice(0, 10),
+          chunks: searchResults.slice(0, modelSpeed === "fast" ? 3 : 5),
           sessionId: sessionId.current,
           searchLatency,
           mode,
@@ -194,16 +194,31 @@ export default function Home() {
       if (!reader) throw new Error("No response body");
 
       const decoder = new TextDecoder();
-      let fullAnswer = "";
+      const answerParts: string[] = [];
       let localQueryLogId: number | null = null;
       let localTokenUsage: { input: number; output: number } | null = null;
+      let rafScheduled = false;
+      let streamDone = false;
 
+      // Batched render: accumulate chunks, flush to state on rAF
+      function scheduleFlush() {
+        if (rafScheduled) return;
+        rafScheduled = true;
+        requestAnimationFrame(() => {
+          rafScheduled = false;
+          setAnswer(answerParts.join(""));
+        });
+      }
+
+      let remainder = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const text = decoder.decode(value);
+        const text = remainder + decoder.decode(value);
         const lines = text.split("\n");
+        // Last element may be incomplete; save it for next iteration
+        remainder = lines.pop() || "";
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
@@ -212,7 +227,7 @@ export default function Home() {
               const llmMs = Date.now() - llmStart;
               currentLatency = { ...currentLatency, llm_ms: llmMs };
               setLatency(currentLatency);
-              setStatus("done");
+              streamDone = true;
               break;
             }
             try {
@@ -222,8 +237,8 @@ export default function Home() {
                 setQueryLogId(parsed.log_id);
               }
               if (parsed.text) {
-                fullAnswer += parsed.text;
-                setAnswer(fullAnswer);
+                answerParts.push(parsed.text);
+                scheduleFlush();
               }
               if (parsed.tokens) {
                 localTokenUsage = parsed.tokens;
@@ -234,8 +249,12 @@ export default function Home() {
             }
           }
         }
+        if (streamDone) break;
       }
 
+      // Final flush to ensure all text is rendered
+      const fullAnswer = answerParts.join("");
+      setAnswer(fullAnswer);
       setStatus("done");
       modeHistory.current[mode] = {
         query, answer: fullAnswer, results: searchResults, status: "done",
