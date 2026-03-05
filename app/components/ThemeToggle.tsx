@@ -7,7 +7,14 @@ export default function ThemeToggle() {
 
   useEffect(() => {
     const stored = localStorage.getItem("legacylens-theme");
-    if (stored === "light") setTheme("light");
+    if (stored) {
+      const t = stored === "light" ? "light" : "dark";
+      setTheme(t);
+      document.documentElement.setAttribute("data-theme", t);
+    } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+      setTheme("light");
+      document.documentElement.setAttribute("data-theme", "light");
+    }
   }, []);
 
   const toggle = () => {

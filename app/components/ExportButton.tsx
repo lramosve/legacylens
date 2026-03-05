@@ -45,6 +45,8 @@ export default function ExportButton({ markdownText, query }: ExportButtonProps)
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setOpen(!open)}
+        aria-label="Export answer"
+        aria-expanded={open}
         className="flex items-center gap-1.5 px-2 py-1 text-xs rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

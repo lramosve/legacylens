@@ -107,10 +107,12 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
     return (
       <div className="w-full max-w-3xl mx-auto">
         {/* Mode selector pill bar */}
-        <div className="flex gap-2 mb-4 justify-center overflow-x-auto pb-1">
+        <div className="flex gap-2 mb-4 justify-center overflow-x-auto pb-1" role="tablist" aria-label="Analysis mode">
           {(Object.keys(MODE_CONFIG) as AnalysisMode[]).map((m) => (
             <button
               key={m}
+              role="tab"
+              aria-selected={mode === m}
               onClick={() => onModeChange(m)}
               disabled={isLoading}
               title={MODE_CONFIG[m].description}
@@ -126,8 +128,10 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
         </div>
 
         {/* Speed toggle */}
-        <div className="flex items-center justify-center gap-3 mb-4">
+        <div className="flex items-center justify-center gap-3 mb-4" role="radiogroup" aria-label="Model speed">
           <button
+            role="radio"
+            aria-checked={modelSpeed === "fast"}
             onClick={() => onModelSpeedChange("fast")}
             disabled={isLoading}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md font-medium transition-colors ${
@@ -141,6 +145,8 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
           </button>
           <span className="text-[var(--muted)] text-xs">|</span>
           <button
+            role="radio"
+            aria-checked={modelSpeed === "quality"}
             onClick={() => onModelSpeedChange("quality")}
             disabled={isLoading}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md font-medium transition-colors ${
@@ -189,7 +195,7 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
 
           {/* Search history dropdown */}
           {showHistory && filteredHistory.length > 0 && !isLoading && (
-            <div className="absolute top-full mt-1 left-0 right-0 bg-[var(--card)] border border-[var(--card-border)] rounded-xl shadow-lg z-30 max-h-60 overflow-y-auto">
+            <div role="listbox" aria-label="Search history" className="absolute top-full mt-1 left-0 right-0 bg-[var(--card)] border border-[var(--card-border)] rounded-xl shadow-lg z-30 max-h-60 overflow-y-auto">
               <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--card-border)]">
                 <span className="text-xs text-[var(--muted)]">Recent searches</span>
                 {onClearHistory && (
@@ -208,6 +214,7 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
               {filteredHistory.slice(0, 8).map((h) => (
                 <button
                   key={h}
+                  role="option"
                   onClick={() => {
                     onQueryChange(h);
                     setShowHistory(false);
