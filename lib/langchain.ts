@@ -8,14 +8,18 @@ import { createServerClient } from "@/lib/supabase";
 import type { CallbackManagerForRetrieverRun } from "@langchain/core/callbacks/manager";
 import type { AnalysisMode, ModelSpeed } from "@/lib/types";
 
-// --- Embeddings ---
+// --- Embeddings (singleton) ---
+
+let _voyageEmbeddings: VoyageEmbeddings | null = null;
 
 export function createVoyageEmbeddings() {
-  return new VoyageEmbeddings({
+  if (_voyageEmbeddings) return _voyageEmbeddings;
+  _voyageEmbeddings = new VoyageEmbeddings({
     apiKey: process.env.VOYAGE_API_KEY,
     modelName: "voyage-code-3",
     inputType: "query",
   });
+  return _voyageEmbeddings;
 }
 
 // --- Hybrid Search Retriever ---
@@ -61,7 +65,7 @@ export class HybridSearchRetriever extends BaseRetriever {
     const { data, error } = await supabase.rpc("hybrid_search_code_chunks", {
       query_text: query,
       query_embedding: JSON.stringify(queryEmbedding),
-      match_count: 15,
+      match_count: 10,
       full_text_weight: 1,
       semantic_weight: 1,
       rrf_k: 50,
@@ -201,7 +205,11 @@ const MODEL_MAP: Record<ModelSpeed, { model: string; maxTokens: number }> = {
   quality: { model: "claude-sonnet-4-20250514", maxTokens: 2048 },
 };
 
-export function buildLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelSpeed = "quality") {
+// Cached chain instances keyed by "mode:speed"
+const _llmChainCache = new Map<string, ReturnType<typeof _buildLLMChain>>();
+const _rawLLMChainCache = new Map<string, ReturnType<typeof _buildRawLLMChain>>();
+
+function _buildLLMChain(mode: AnalysisMode, modelSpeed: ModelSpeed) {
   const { system, humanTemplate } = ANALYSIS_PROMPTS[mode];
   const { model: modelName, maxTokens } = MODEL_MAP[modelSpeed];
 
@@ -222,11 +230,17 @@ export function buildLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelS
   return prompt.pipe(model).pipe(outputParser);
 }
 
-/**
- * Build a raw LLM chain that returns AIMessageChunk stream (includes usage_metadata).
- * Used by the /api/ask route to extract token usage from the final chunk.
- */
-export function buildRawLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelSpeed = "quality") {
+export function buildLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelSpeed = "quality") {
+  const key = `${mode}:${modelSpeed}`;
+  let chain = _llmChainCache.get(key);
+  if (!chain) {
+    chain = _buildLLMChain(mode, modelSpeed);
+    _llmChainCache.set(key, chain);
+  }
+  return chain;
+}
+
+function _buildRawLLMChain(mode: AnalysisMode, modelSpeed: ModelSpeed) {
   const { system, humanTemplate } = ANALYSIS_PROMPTS[mode];
   const { model: modelName, maxTokens } = MODEL_MAP[modelSpeed];
 
@@ -243,8 +257,21 @@ export function buildRawLLMChain(mode: AnalysisMode = "explain", modelSpeed: Mod
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
-  // Return without StringOutputParser so we get AIMessageChunk objects
   return prompt.pipe(model);
+}
+
+/**
+ * Build a raw LLM chain that returns AIMessageChunk stream (includes usage_metadata).
+ * Used by the /api/ask route to extract token usage from the final chunk.
+ */
+export function buildRawLLMChain(mode: AnalysisMode = "explain", modelSpeed: ModelSpeed = "quality") {
+  const key = `${mode}:${modelSpeed}`;
+  let chain = _rawLLMChainCache.get(key);
+  if (!chain) {
+    chain = _buildRawLLMChain(mode, modelSpeed);
+    _rawLLMChainCache.set(key, chain);
+  }
+  return chain;
 }
 
 export function formatChunksAsContext(

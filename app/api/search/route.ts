@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HybridSearchRetriever } from "@/lib/langchain";
 import { preprocessQuery } from "@/lib/cobol-preprocessor";
+import { searchCache, searchCacheKey } from "@/lib/cache";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +17,16 @@ export async function POST(req: NextRequest) {
     const { normalized, wasExpanded } = preprocessQuery(query);
     const searchQuery = wasExpanded ? normalized : query;
 
+    // Check cache first
+    const cacheKey = searchCacheKey(searchQuery);
+    const cached = searchCache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        ...cached,
+        cached: true,
+      });
+    }
+
     const retriever = new HybridSearchRetriever();
     await retriever.invoke(searchQuery);
 
@@ -27,14 +38,19 @@ export async function POST(req: NextRequest) {
       score: maxScore > 0 ? r.score / maxScore : 0,
     }));
 
-    return NextResponse.json({
+    const response = {
       results,
       query_normalized: wasExpanded ? normalized : undefined,
       latency: {
         embedding_ms: retriever.lastEmbeddingMs,
         search_ms: retriever.lastSearchMs,
       },
-    });
+    };
+
+    // Store in cache
+    searchCache.set(cacheKey, response as typeof cached & typeof response);
+
+    return NextResponse.json(response);
   } catch (err) {
     console.error("Search route error:", err);
     return NextResponse.json(

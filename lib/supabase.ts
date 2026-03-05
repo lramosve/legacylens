@@ -1,13 +1,18 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-// Server-side client with service role key (for API routes and ingestion)
+// Singleton server-side client — reused across requests to avoid
+// re-creating the SDK + TCP connection on every call.
+let _serverClient: SupabaseClient | null = null;
+
 export function createServerClient() {
+  if (_serverClient) return _serverClient;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   }
-  return createClient(url, key);
+  _serverClient = createClient(url, key);
+  return _serverClient;
 }
 
 // Browser-side client with anon key (for read-only operations)

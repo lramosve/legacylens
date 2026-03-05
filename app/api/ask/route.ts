@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { buildRawLLMChain, formatChunksAsContext } from "@/lib/langchain";
 import { createServerClient } from "@/lib/supabase";
+import { askCache, askCacheKey } from "@/lib/cache";
 import type { AnalysisMode, ModelSpeed } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -34,7 +35,36 @@ export async function POST(req: NextRequest) {
     const VALID_SPEEDS: ModelSpeed[] = ["fast", "quality"];
     const modelSpeed: ModelSpeed = VALID_SPEEDS.includes(rawSpeed) ? rawSpeed : "quality";
 
-    const chunkLimit = modelSpeed === "fast" ? 5 : 10;
+    const chunkLimit = modelSpeed === "fast" ? 3 : 5;
+
+    // Check cache for identical query + mode + speed
+    const cacheKey = askCacheKey(query, analysisMode, modelSpeed);
+    const cached = askCache.get(cacheKey);
+    if (cached) {
+      const encoder = new TextEncoder();
+      const cachedStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ text: cached.answer, cached: true })}\n\n`)
+          );
+          if (cached.tokens) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ tokens: cached.tokens })}\n\n`)
+            );
+          }
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(cachedStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
     const context = formatChunksAsContext((chunks as CodeChunk[]).slice(0, chunkLimit));
     const chain = buildRawLLMChain(analysisMode, modelSpeed);
 
@@ -150,6 +180,9 @@ export async function POST(req: NextRequest) {
                 if (error) console.error("Failed to update query_log:", error);
               });
           }
+
+          // Populate cache for future identical requests
+          askCache.set(cacheKey, { answer: fullAnswer, tokens: tokenUsage });
         } catch (err) {
           console.error("Stream error:", err);
           controller.error(err);
