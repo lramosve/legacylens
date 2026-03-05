@@ -213,6 +213,7 @@ export default function Home() {
       }
 
       let remainder = "";
+      let wasPartial = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -231,6 +232,10 @@ export default function Home() {
               setLatency(currentLatency);
               streamDone = true;
               break;
+            }
+            if (data === "[PARTIAL]") {
+              wasPartial = true;
+              continue;
             }
             try {
               const parsed = JSON.parse(data);
@@ -252,6 +257,11 @@ export default function Home() {
           }
         }
         if (streamDone) break;
+      }
+
+      // Append partial notice if the response was truncated due to timeout
+      if (wasPartial) {
+        answerParts.push("\n\n---\n*⚠ Response was truncated due to timeout. Try a more specific query or use fast mode.*");
       }
 
       // Final flush to ensure all text is rendered

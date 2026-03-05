@@ -81,6 +81,9 @@ export async function POST(req: NextRequest) {
     let tokenUsage: { input: number; output: number } | null = null;
     let logId: number | null = null;
 
+    // Safety margin: close stream before Vercel kills the function (maxDuration=60s)
+    const STREAM_TIMEOUT_MS = 55_000;
+
     const readableStream = new ReadableStream({
       async start(controller) {
         try {
@@ -96,7 +99,16 @@ export async function POST(req: NextRequest) {
             }
           }).catch(() => { /* non-critical */ });
 
+          const streamStart = Date.now();
+          let timedOut = false;
+
           for await (const chunk of stream) {
+            // Check timeout before processing each chunk
+            if (Date.now() - streamStart > STREAM_TIMEOUT_MS) {
+              timedOut = true;
+              break;
+            }
+
             // Extract text content from AIMessageChunk
             const content = chunk.content;
             let textPart = "";
@@ -142,6 +154,9 @@ export async function POST(req: NextRequest) {
             );
           }
 
+          if (timedOut) {
+            controller.enqueue(encoder.encode("data: [PARTIAL]\n\n"));
+          }
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
 
