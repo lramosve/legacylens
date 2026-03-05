@@ -110,16 +110,43 @@ export default function Home() {
       });
       if (res.ok) {
         const data = await res.json();
-        setRelatedQuestions(data.questions || []);
+        const questions: string[] = data.questions || [];
+        setRelatedQuestions(questions);
+        // Update mode history snapshot so cached restore includes related questions
+        const snap = modeHistory.current[mode];
+        if (snap && snap.query === query) {
+          snap.relatedQuestions = questions;
+        }
       }
     } catch {
       // Non-critical
     } finally {
       setLoadingRelated(false);
     }
-  }, []);
+  }, [mode]);
 
   const handleSearch = useCallback(async (query: string) => {
+    // Client-side cache: if we already have a completed answer for the same query+mode+speed, restore it
+    const snapshot = modeHistory.current[mode];
+    if (
+      snapshot &&
+      snapshot.status === "done" &&
+      snapshot.query === query &&
+      snapshot.usedModelSpeed === modelSpeed
+    ) {
+      setCurrentQuery(snapshot.query);
+      setAnswer(snapshot.answer);
+      setResults(snapshot.results);
+      setStatus("done");
+      setError(snapshot.error);
+      setLatency(snapshot.latency);
+      setQueryLogId(snapshot.queryLogId);
+      setUsedModelSpeed(snapshot.usedModelSpeed);
+      setTokenUsage(snapshot.tokenUsage);
+      setRelatedQuestions(snapshot.relatedQuestions);
+      return;
+    }
+
     setStatus("searching");
     setResults([]);
     setAnswer("");
