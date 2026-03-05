@@ -63,9 +63,9 @@ export default function Home() {
   const [queryLogId, setQueryLogId] = useState<number | null>(null);
   const [currentQuery, setCurrentQuery] = useState("");
   const [mode, setMode] = useState<AnalysisMode>("explain");
-  const [modelSpeed, setModelSpeed] = useState<ModelSpeed>("quality");
+  const [modelSpeed, setModelSpeed] = useState<ModelSpeed>("fast");
   const [inputQuery, setInputQuery] = useState("");
-  const [usedModelSpeed, setUsedModelSpeed] = useState<ModelSpeed>("quality");
+  const [usedModelSpeed, setUsedModelSpeed] = useState<ModelSpeed>("fast");
   const [tokenUsage, setTokenUsage] = useState<{ input: number; output: number } | null>(null);
   const [relatedQuestions, setRelatedQuestions] = useState<string[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);

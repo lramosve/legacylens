@@ -196,7 +196,7 @@ export default function Answer({
             {status === "done" && (
               <div className="mt-4 pt-3 border-t border-[var(--card-border)]">
                 {latency && (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-xs text-[var(--muted)] mb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-xs text-[var(--muted)] mb-3 flex-wrap">
                     <span>
                       <strong>Search:</strong> {((latency.embedding_ms + latency.search_ms) / 1000).toFixed(2)}s
                     </span>
@@ -204,11 +204,15 @@ export default function Answer({
                     <span>
                       <strong>Generation:</strong> {latency.llm_ms != null ? `${(latency.llm_ms / 1000).toFixed(2)}s` : "..."}
                     </span>
+                    <span className="text-[var(--card-border)] hidden sm:inline">|</span>
+                    <span>
+                      <strong>Total time:</strong> {latency.llm_ms != null ? `${((latency.embedding_ms + latency.search_ms + latency.llm_ms) / 1000).toFixed(2)}s` : "..."}
+                    </span>
                     {tokenUsage && (
                       <>
                         <span className="text-[var(--card-border)] hidden sm:inline">|</span>
                         <span>
-                          <strong>Tokens:</strong> {tokenUsage.input}&#8593; {tokenUsage.output}&#8595;
+                          <strong>Tokens:</strong> {tokenUsage.input}&#8593; {tokenUsage.output}&#8595; ({tokenUsage.input + tokenUsage.output} total)
                         </span>
                       </>
                     )}
