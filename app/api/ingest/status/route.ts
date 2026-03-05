@@ -1,7 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
+import { statusLimiter, applyRateLimit } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const rateLimited = applyRateLimit(statusLimiter, req);
+  if (rateLimited) return rateLimited;
   try {
     const supabase = createServerClient();
 

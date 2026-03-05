@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { buildRawLLMChain, formatChunksAsContext } from "@/lib/langchain";
 import { createServerClient } from "@/lib/supabase";
 import { askCache, askCacheKey } from "@/lib/cache";
+import { askLimiter, applyRateLimit } from "@/lib/rate-limit";
 import type { AnalysisMode, ModelSpeed } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,6 +20,9 @@ interface CodeChunk {
 }
 
 export async function POST(req: NextRequest) {
+  const rateLimited = applyRateLimit(askLimiter, req);
+  if (rateLimited) return rateLimited;
+
   try {
     const { query, chunks, sessionId, searchLatency, mode: rawMode, modelSpeed: rawSpeed } = await req.json();
 

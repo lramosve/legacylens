@@ -142,6 +142,7 @@ export default function Home() {
       });
 
       if (!searchRes.ok) {
+        if (searchRes.status === 429) throw new Error("Rate limit reached — please wait a moment and try again.");
         throw new Error("Search failed");
       }
 
@@ -187,6 +188,7 @@ export default function Home() {
       });
 
       if (!askRes.ok) {
+        if (askRes.status === 429) throw new Error("Rate limit reached — please wait a moment and try again.");
         throw new Error("Answer generation failed");
       }
 

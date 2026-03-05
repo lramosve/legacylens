@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { HybridSearchRetriever } from "@/lib/langchain";
 import { preprocessQuery } from "@/lib/cobol-preprocessor";
 import { searchCache, searchCacheKey } from "@/lib/cache";
+import { searchLimiter, applyRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const rateLimited = applyRateLimit(searchLimiter, req);
+  if (rateLimited) return rateLimited;
+
   try {
     const { query } = await req.json();
 

@@ -1,9 +1,13 @@
 import { NextRequest } from "next/server";
 import { ChatAnthropic } from "@langchain/anthropic";
+import { relatedLimiter, applyRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const rateLimited = applyRateLimit(relatedLimiter, req);
+  if (rateLimited) return rateLimited;
+
   try {
     const { query, answer_summary } = await req.json();
 
