@@ -3,20 +3,17 @@ import { HybridSearchRetriever } from "@/lib/langchain";
 import { preprocessQuery } from "@/lib/cobol-preprocessor";
 import { searchCache, searchCacheKey } from "@/lib/cache";
 import { searchLimiter, applyRateLimit } from "@/lib/rate-limit";
+import { searchBodySchema, parseBody } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   const rateLimited = applyRateLimit(searchLimiter, req);
   if (rateLimited) return rateLimited;
 
   try {
-    const { query } = await req.json();
+    const [body, validationError] = parseBody(searchBodySchema, await req.json());
+    if (validationError) return validationError;
 
-    if (!query || typeof query !== "string") {
-      return NextResponse.json(
-        { error: "Missing or invalid query" },
-        { status: 400 }
-      );
-    }
+    const { query } = body;
 
     const { normalized, wasExpanded } = preprocessQuery(query);
     const searchQuery = wasExpanded ? normalized : query;

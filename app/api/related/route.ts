@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { relatedLimiter, applyRateLimit } from "@/lib/rate-limit";
+import { relatedBodySchema, parseBody } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -9,14 +10,10 @@ export async function POST(req: NextRequest) {
   if (rateLimited) return rateLimited;
 
   try {
-    const { query, answer_summary } = await req.json();
+    const [body, validationError] = parseBody(relatedBodySchema, await req.json());
+    if (validationError) return validationError;
 
-    if (!query) {
-      return new Response(
-        JSON.stringify({ error: "Missing query" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    const { query, answer_summary } = body;
 
     const model = new ChatAnthropic({
       model: "claude-haiku-4-5-20251001",

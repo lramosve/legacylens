@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { feedbackLimiter, applyRateLimit } from "@/lib/rate-limit";
+import { feedbackBodySchema, parseBody } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   const rateLimited = applyRateLimit(feedbackLimiter, req);
   if (rateLimited) return rateLimited;
 
   try {
-    const { query_log_id, query_raw, is_positive, comment, session_id } =
-      await req.json();
+    const [body, validationError] = parseBody(feedbackBodySchema, await req.json());
+    if (validationError) return validationError;
 
-    if (typeof is_positive !== "boolean") {
-      return NextResponse.json(
-        { error: "is_positive (boolean) is required" },
-        { status: 400 }
-      );
-    }
+    const { query_log_id, query_raw, is_positive, comment, session_id } = body;
 
     const supabase = createServerClient();
 

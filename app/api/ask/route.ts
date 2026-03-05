@@ -3,41 +3,22 @@ import { buildRawLLMChain, formatChunksAsContext } from "@/lib/langchain";
 import { createServerClient } from "@/lib/supabase";
 import { askCache, askCacheKey } from "@/lib/cache";
 import { askLimiter, applyRateLimit } from "@/lib/rate-limit";
-import type { AnalysisMode, ModelSpeed } from "@/lib/types";
+import { askBodySchema, parseBody } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-interface CodeChunk {
-  content: string;
-  file_path: string;
-  line_start: number;
-  line_end: number;
-  language: string;
-  chunk_type: string;
-  function_name: string | null;
-  score?: number;
-}
 
 export async function POST(req: NextRequest) {
   const rateLimited = applyRateLimit(askLimiter, req);
   if (rateLimited) return rateLimited;
 
   try {
-    const { query, chunks, sessionId, searchLatency, mode: rawMode, modelSpeed: rawSpeed } = await req.json();
+    const [body, validationError] = parseBody(askBodySchema, await req.json());
+    if (validationError) return validationError;
 
-    if (!query || !chunks || !Array.isArray(chunks)) {
-      return new Response(
-        JSON.stringify({ error: "Missing query or chunks" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const VALID_MODES: AnalysisMode[] = ["explain", "document", "translate", "business-logic"];
-    const analysisMode: AnalysisMode = VALID_MODES.includes(rawMode) ? rawMode : "explain";
-
-    const VALID_SPEEDS: ModelSpeed[] = ["fast", "quality"];
-    const modelSpeed: ModelSpeed = VALID_SPEEDS.includes(rawSpeed) ? rawSpeed : "quality";
+    const { query, chunks, sessionId, searchLatency } = body;
+    const analysisMode = body.mode ?? "explain";
+    const modelSpeed = body.modelSpeed ?? "quality";
 
     const chunkLimit = modelSpeed === "fast" ? 3 : 5;
 
@@ -69,7 +50,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const context = formatChunksAsContext((chunks as CodeChunk[]).slice(0, chunkLimit));
+    const context = formatChunksAsContext(chunks.slice(0, chunkLimit));
     const chain = buildRawLLMChain(analysisMode, modelSpeed);
 
     // Start LLM stream and query_log insert in parallel (non-blocking)
@@ -81,9 +62,7 @@ export async function POST(req: NextRequest) {
         query_normalized: null,
         latency_embedding_ms: searchLatency?.embedding_ms ?? null,
         latency_search_ms: searchLatency?.search_ms ?? null,
-        retrieved_chunk_ids: (chunks as CodeChunk[]).map(
-          (c: CodeChunk & { id?: number }) => c.id
-        ).filter(Boolean),
+        retrieved_chunk_ids: chunks.map((c) => c.id).filter(Boolean),
         session_id: sessionId ?? null,
         analysis_mode: analysisMode,
       })
