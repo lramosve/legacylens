@@ -49,6 +49,7 @@ interface AnswerProps {
   modelSpeed?: "fast" | "quality";
   tokenUsage?: { input: number; output: number } | null;
   animationKey?: string;
+  onRetry?: () => void;
 }
 
 export default function Answer({
@@ -64,6 +65,7 @@ export default function Answer({
   modelSpeed = "quality",
   tokenUsage,
   animationKey,
+  onRetry,
 }: AnswerProps) {
   const theme = useTheme();
 
@@ -87,7 +89,15 @@ export default function Answer({
 
       {status === "error" && (
         <div className="px-5 py-4 bg-red-950/30 border border-red-900/50 rounded-xl text-red-400">
-          {error || "An error occurred. Please try again."}
+          <p>{error || "An error occurred. Please try again."}</p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-3 px-4 py-1.5 text-sm bg-red-900/40 hover:bg-red-900/60 border border-red-800/50 rounded-lg transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 

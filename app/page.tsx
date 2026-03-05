@@ -325,6 +325,10 @@ export default function Home() {
     setMode(newMode);
   }, [mode, inputQuery, answer, results, status, error, latency, queryLogId, usedModelSpeed, tokenUsage, relatedQuestions]);
 
+  const handleRetry = useCallback(() => {
+    if (currentQuery) handleSearch(currentQuery);
+  }, [currentQuery, handleSearch]);
+
   const handleRelatedSelect = useCallback((question: string) => {
     setInputQuery(question);
     handleSearch(question);
@@ -396,6 +400,7 @@ export default function Home() {
           modelSpeed={usedModelSpeed}
           tokenUsage={tokenUsage}
           animationKey={`${mode}-${currentQuery}`}
+          onRetry={handleRetry}
         />
 
         {/* Related questions */}

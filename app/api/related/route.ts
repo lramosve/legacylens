@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { relatedLimiter, applyRateLimit } from "@/lib/rate-limit";
 import { relatedBodySchema, parseBody } from "@/lib/validation";
+import { relatedCache, relatedCacheKey } from "@/lib/cache";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,13 @@ export async function POST(req: NextRequest) {
     if (validationError) return validationError;
 
     const { query, answer_summary } = body;
+
+    // Check cache first
+    const cacheKey = relatedCacheKey(query);
+    const cached = relatedCache.get(cacheKey);
+    if (cached) {
+      return Response.json({ questions: cached, cached: true });
+    }
 
     const model = new ChatAnthropic({
       model: "claude-haiku-4-5-20251001",
@@ -41,8 +49,9 @@ export async function POST(req: NextRequest) {
       return Response.json({ questions: [] });
     }
 
-    const questions: string[] = JSON.parse(match[0]);
-    return Response.json({ questions: questions.slice(0, 3) });
+    const questions: string[] = JSON.parse(match[0]).slice(0, 3);
+    relatedCache.set(cacheKey, questions);
+    return Response.json({ questions });
   } catch (err) {
     console.error("Related questions error:", err);
     return Response.json({ questions: [] });

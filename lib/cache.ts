@@ -58,3 +58,10 @@ export function searchCacheKey(query: string): string {
 export function askCacheKey(query: string, mode: string, speed: string): string {
   return `${query.trim().toLowerCase()}::${mode}::${speed}`;
 }
+
+// Related questions cache: keyed by query string
+export const relatedCache = new TTLCache<string[]>(10 * 60 * 1000, 200);
+
+export function relatedCacheKey(query: string): string {
+  return query.trim().toLowerCase();
+}
