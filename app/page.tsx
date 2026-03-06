@@ -74,12 +74,26 @@ export default function Home() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { history, addQuery, clearHistory } = useSearchHistory();
 
-  // Keyboard shortcuts: / to focus search, Ctrl+K / Cmd+K
+  // Keyboard shortcuts: / to focus search, Ctrl+K / Cmd+K, Ctrl+Shift+Delete to clear cache
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Ctrl+Shift+Delete: clear client-side answer cache
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "Delete") {
+        e.preventDefault();
+        modeHistory.current = {};
+        setStatus("idle");
+        setResults([]);
+        setAnswer("");
+        setLatency(null);
+        setTokenUsage(null);
+        setRelatedQuestions([]);
+        setCurrentQuery("");
+        setError("");
+        return;
+      }
+
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        // Ctrl+K / Cmd+K works even when focused in input
         if ((e.ctrlKey || e.metaKey) && e.key === "k") {
           e.preventDefault();
           searchInputRef.current?.focus();
