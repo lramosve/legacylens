@@ -77,7 +77,7 @@ export default function Home() {
   // Keyboard shortcuts: / to focus search, Ctrl+K / Cmd+K, Ctrl+Shift+Delete to clear cache
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Ctrl+Shift+Delete: clear client-side answer cache
+      // Ctrl+Shift+Delete: clear client + server caches
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "Delete") {
         e.preventDefault();
         modeHistory.current = {};
@@ -89,6 +89,12 @@ export default function Home() {
         setRelatedQuestions([]);
         setCurrentQuery("");
         setError("");
+        // Also flush server-side caches (fire-and-forget)
+        fetch("/api/cache/clear", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ secret: "legacylens-clear" }),
+        }).catch(() => {});
         return;
       }
 

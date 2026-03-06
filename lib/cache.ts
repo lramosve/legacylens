@@ -28,6 +28,14 @@ export class TTLCache<T> {
     return entry.value;
   }
 
+  clear(): void {
+    this.store.clear();
+  }
+
+  get size(): number {
+    return this.store.size;
+  }
+
   set(key: string, value: T): void {
     // Evict oldest entries if at capacity
     if (this.store.size >= this.maxSize) {
